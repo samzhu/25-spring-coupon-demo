@@ -41,11 +41,4 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and publish Docker image
-        run: ./gradlew bootBuildImage --imageName=ghcr.io/${{ github.repository }}:${{ github.sha }} --publish
-
-      - name: Push Docker image to registry
-        uses: docker/push-action@v3
-        with:
-          image: ghcr.io/${{ github.repository }}:${{ github.sha }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }} 
+        run: ./gradlew bootBuildImage --imageName=ghcr.io/${{ github.repository }}:${{ github.sha }} --publishImage
