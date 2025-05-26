@@ -124,15 +124,15 @@
 
         <div class="total-section">
             <h2>結帳總覽</h2>
-            <p><span>商品原總價:</span> <span id="originalTotalDisplay">NT$ 0.00</span></p>
+            <p><span>購物車總價:</span> <span id="originalTotalDisplay">NT$ 0</span></p>
             <div id="appliedCouponSummaryContainer">
                  </div>
             <p>
                 <span>折扣後總價:</span>
-                <span id="discountedTotalDisplay" class="final-price">NT$ 0.00</span>
+                <span id="discountedTotalDisplay" class="final-price">NT$ 0</span>
             </p>
             <p id="savingsDisplayContainer" style="font-size:0.9em; color: var(--success-color); justify-content: flex-end; display:none;">
-                已為您節省 NT$ <span id="savingsAmountDisplay">0.00</span>
+                已為您節省 NT$ <span id="savingsAmountDisplay">0</span>
             </p>
         </div>
 
@@ -149,7 +149,7 @@
             ];
             let currentAppliedCouponCodes = []; // Array to store codes of selected coupons
 
-            function updateCartCalculation() {
+            function updateCartCalculation(triggeringCheckbox) {
                 const shoppingCartInput = {
                     items: fixedCartItems,
                     couponCodes: currentAppliedCouponCodes // Send the array of selected codes
@@ -192,12 +192,39 @@
                         errorMsg = jqXHR.responseText || '計算錯誤';
                     }
                     $('#couponMessage').text(errorMsg).show();
+
+                    let alertMessage = "處理優惠券時發生錯誤: " + errorMsg;
+                    if (triggeringCheckbox) {
+                        const couponLabel = $(triggeringCheckbox).next('label').text().split('(')[0].trim();
+                        if (couponLabel) {
+                            alertMessage = "處理優惠券 '" + couponLabel + "' 時發生錯誤: " + errorMsg;
+                        }
+                    }
+                    alert(alertMessage);
+
+                    if (triggeringCheckbox) {
+                        const $checkbox = $(triggeringCheckbox);
+                        // Revert the checkbox state
+                        $checkbox.prop('checked', !$checkbox.prop('checked'));
+
+                        // After reverting, currentAppliedCouponCodes needs to be updated to reflect the new UI state
+                        currentAppliedCouponCodes = [];
+                        $('.coupon-checkbox:checked').each(function() {
+                            currentAppliedCouponCodes.push($(this).val());
+                        });
+                        console.log("因錯誤回復，目前選中的優惠券:", currentAppliedCouponCodes);
+
+                        // Call updateCartCalculation again to refresh the UI based on the reverted state.
+                        // Pass no argument to prevent potential infinite loops of reverts.
+                        console.log("因錯誤回復，重新計算購物車...");
+                        updateCartCalculation(); 
+                    }
                 });
             }
 
             function renderCalculationResult(result) {
-                $('#originalTotalDisplay').text(`NT$ ${parseFloat(result.originalTotal).toFixed(2)}`);
-                $('#discountedTotalDisplay').text(`NT$ ${parseFloat(result.discountedTotal).toFixed(2)}`);
+                $('#originalTotalDisplay').text(`NT$ ${result.originalTotal}`);
+                $('#discountedTotalDisplay').text(`NT$ ${result.discountedTotal}`);
 
                 const $appliedList = $('#appliedCouponListDisplay').empty(); // Clear previous list
                 const $appliedSummaryContainer = $('#appliedCouponSummaryContainer').empty();
@@ -205,8 +232,8 @@
                 if (result.appliedCoupons && result.appliedCoupons.length > 0) {
                     $('#noAppliedCouponText').hide();
                     result.appliedCoupons.forEach(function(coupon) {
-                        $('<li>').text(`${coupon.description} (${coupon.code}) - 折抵 NT$ ${parseFloat(coupon.discountAmount).toFixed(2)}`).appendTo($appliedList);
-                        $('<p>').html(`<span>已套用優惠券 (${coupon.code}):</span> <span style="color: var(--success-color);">- NT$ ${parseFloat(coupon.discountAmount).toFixed(2)}</span>`).appendTo($appliedSummaryContainer);
+                        $('<li>').text(`${coupon.description} (${coupon.code}) - 折抵 NT$ ${coupon.discountAmount}`).appendTo($appliedList);
+                        $('<p>').html(`<span>已套用優惠券 (${coupon.code}):</span> <span style="color: var(--success-color);">- NT$ ${coupon.discountAmount}</span>`).appendTo($appliedSummaryContainer);
                     });
                     $appliedList.show();
                 } else {
@@ -214,9 +241,9 @@
                     $appliedList.hide();
                 }
 
-                const totalDiscount = parseFloat(result.totalDiscountAmount);
+                const totalDiscount = result.totalDiscountAmount;
                 if (totalDiscount > 0) {
-                    $('#savingsAmountDisplay').text(totalDiscount.toFixed(2));
+                    $('#savingsAmountDisplay').text(totalDiscount);
                     $('#savingsDisplayContainer').css('display', 'flex');
                 } else {
                     $('#savingsDisplayContainer').hide();
@@ -230,18 +257,18 @@
                     currentAppliedCouponCodes.push($(this).val());
                 });
                 console.log("選中的優惠券:", currentAppliedCouponCodes);
-                updateCartCalculation();
+                updateCartCalculation(this); // Pass the changed checkbox element
             });
             
             $('#resetCouponsBtn').on('click', function() {
                 currentAppliedCouponCodes = [];
                 $('.coupon-checkbox').prop('checked', false); // Uncheck all
                 $('#couponMessage').hide().text('');
-                updateCartCalculation();
+                updateCartCalculation(); // Call without triggeringCheckbox
             });
 
             // Initial calculation on page load
-            updateCartCalculation();
+            updateCartCalculation(); // Call without triggeringCheckbox
         });
     </script>
 </body>

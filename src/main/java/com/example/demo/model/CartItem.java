@@ -1,7 +1,5 @@
 package com.example.demo.model;
 
-import java.math.BigDecimal;
-
 public class CartItem {
     private final Product product;
     private int quantity;
@@ -23,9 +21,9 @@ public class CartItem {
         this.quantity = quantity;
     }
 
-    public BigDecimal getSubtotal() {
+    public Integer getSubtotal() {
         if (product == null || product.getPrice() == null)
-            return BigDecimal.ZERO;
-        return product.getPrice().multiply(BigDecimal.valueOf(quantity));
+            return 0;
+        return product.getPrice() * quantity;
     }
 }

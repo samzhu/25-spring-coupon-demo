@@ -1,7 +1,5 @@
 package com.example.demo.model;
 
-import java.math.BigDecimal;
-
 /**
  * 代表商店中的一個產品。
  * 包含產品的基本資訊如 ID、名稱和價格。
@@ -9,7 +7,7 @@ import java.math.BigDecimal;
 public class Product {
     private final String id;
     private final String name;
-    private final BigDecimal price;
+    private final Integer price;
 
     /**
      * 建構一個新的產品。
@@ -18,7 +16,7 @@ public class Product {
      * @param name  產品的名稱
      * @param price 產品的價格
      */
-    public Product(String id, String name, BigDecimal price) {
+    public Product(String id, String name, Integer price) {
         this.id = id;
         this.name = name;
         this.price = price;
@@ -47,7 +45,7 @@ public class Product {
      * 
      * @return 產品價格
      */
-    public BigDecimal getPrice() {
+    public Integer getPrice() {
         return price;
     }
 

@@ -1,7 +1,6 @@
 package com.example.demo.model;
 
 import java.io.Serializable;
-import java.math.BigDecimal;
 import java.util.Objects;
 
 /**
@@ -13,7 +12,7 @@ public class Coupon implements Serializable {
 
     private final String code;
     private final String description;
-    private final BigDecimal discountAmount; // 折抵金額
+    private final Integer discountAmount; // 折抵金額
 
     /**
      * 建構一個新的固定金額優惠券。
@@ -21,7 +20,7 @@ public class Coupon implements Serializable {
      * @param description 優惠券的描述文字
      * @param discountAmount 優惠券的固定折抵金額
      */
-    public Coupon(String code, String description, BigDecimal discountAmount) {
+    public Coupon(String code, String description, Integer discountAmount) {
         this.code = code;
         this.description = description;
         this.discountAmount = discountAmount;
@@ -29,7 +28,7 @@ public class Coupon implements Serializable {
 
     public String getCode() { return code; }
     public String getDescription() { return description; }
-    public BigDecimal getDiscountAmount() { return discountAmount; } // Getter 名稱更改
+    public Integer getDiscountAmount() { return discountAmount; } // Getter 名稱更改
 
     @Override
     public boolean equals(Object o) {

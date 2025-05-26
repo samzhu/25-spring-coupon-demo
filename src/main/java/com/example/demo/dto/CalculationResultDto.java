@@ -1,6 +1,6 @@
 package com.example.demo.dto;
 
-import java.math.BigDecimal;
+// import java.math.BigDecimal; // 將被移除
 import java.util.List;
 
 import com.example.demo.model.Coupon;
@@ -14,9 +14,9 @@ import com.example.demo.model.Coupon;
  * @param appliedCoupon       如果有優惠券被套用，則為該優惠券的詳細信息；否則為 null。
  */
 public record CalculationResultDto(
-                BigDecimal originalTotal,
-                BigDecimal discountedTotal,
-                BigDecimal totalDiscountAmount,
+                Integer originalTotal,      // BigDecimal 改為 Integer
+                Integer discountedTotal,    // BigDecimal 改為 Integer
+                Integer totalDiscountAmount,// BigDecimal 改為 Integer
                 List<Coupon> appliedCoupons) {
 
 }

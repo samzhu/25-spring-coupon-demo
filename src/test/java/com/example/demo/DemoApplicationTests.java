@@ -4,7 +4,6 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
 
@@ -53,9 +52,9 @@ class DemoApplicationTests {
 	@BeforeEach
 	void setUp() {
 		// 設置測試數據
-		product1 = new Product("P001", "測試商品1", new BigDecimal("100.00"));
-		product2 = new Product("P002", "測試商品2", new BigDecimal("200.00"));
-		coupon1 = new Coupon("C001", "測試優惠券", new BigDecimal("50.00"));
+		product1 = new Product("P001", "測試商品1", 100);
+		product2 = new Product("P002", "測試商品2", 200);
+		coupon1 = new Coupon("C001", "測試優惠券", 50);
 
 		// 模擬 Repository 行為
 		when(productRepository.findAll()).thenReturn(Arrays.asList(product1, product2));
@@ -91,9 +90,9 @@ class DemoApplicationTests {
 		ShoppingCartInput input = new ShoppingCartInput(items, Arrays.asList("C001"));
 		
 		CalculationResultDto expectedResult = new CalculationResultDto(
-			new BigDecimal("400.00"),  // 原始總額
-			new BigDecimal("350.00"),  // 折扣後總額
-			new BigDecimal("50.00"),   // 總折扣金額
+			400,  // 原始總額 (BigDecimal 改為 Integer)
+			350,  // 折扣後總額 (BigDecimal 改為 Integer)
+			50,   // 總折扣金額 (BigDecimal 改為 Integer)
 			Arrays.asList(coupon1)     // 使用的優惠券
 		);
 
@@ -104,9 +103,9 @@ class DemoApplicationTests {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(objectMapper.writeValueAsString(input)))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.originalTotal").value(400.0))
-			.andExpect(jsonPath("$.discountedTotal").value(350.0))
-			.andExpect(jsonPath("$.totalDiscountAmount").value(50.0))
+			.andExpect(jsonPath("$.originalTotal").value(400))
+			.andExpect(jsonPath("$.discountedTotal").value(350))
+			.andExpect(jsonPath("$.totalDiscountAmount").value(50))
 			.andExpect(jsonPath("$.appliedCoupons[0].code").value("C001"));
 
 		verify(cartService).calculateTotalsFromDto(input);

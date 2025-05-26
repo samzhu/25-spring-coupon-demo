@@ -1,7 +1,5 @@
 package com.example.demo.service;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -41,9 +39,9 @@ public class CartService {
      * @return CalculationResultDto 包含原始總價、折扣後總價、折扣金額和所有套用的優惠券列表。
      */
     public CalculationResultDto calculateTotalsFromDto(ShoppingCartInput cartInputDto) {
-        BigDecimal originalTotal = BigDecimal.ZERO;
+        Integer originalTotal = 0;
         List<Coupon> appliedCouponInstances = new ArrayList<>();
-        BigDecimal totalDiscountFromCoupons = BigDecimal.ZERO;
+        Integer totalDiscountFromCoupons = 0;
 
         // 1. 計算原始總價
         if (cartInputDto.items() != null) {
@@ -51,14 +49,13 @@ public class CartService {
                 Optional<Product> productOpt = productRepository.findById(itemInput.productId());
                 if (productOpt.isPresent()) {
                     Product product = productOpt.get();
-                    originalTotal = originalTotal.add(
-                            product.getPrice().multiply(BigDecimal.valueOf(itemInput.quantity())));
+                    originalTotal = originalTotal + (product.getPrice() * itemInput.quantity());
                 } else {
                     System.err.println("警告：計算時找不到產品 ID: " + itemInput.productId());
                 }
             }
         }
-        originalTotal = originalTotal.setScale(2, RoundingMode.HALF_UP);
+        
 
         // 2. 處理多張優惠券 (錯誤疊加邏輯)
         if (cartInputDto.couponCodes() != null && !cartInputDto.couponCodes().isEmpty()) {
@@ -68,7 +65,7 @@ public class CartService {
                     if (couponOpt.isPresent()) {
                         Coupon coupon = couponOpt.get();
                         appliedCouponInstances.add(coupon);
-                        totalDiscountFromCoupons = totalDiscountFromCoupons.add(coupon.getDiscountAmount()); // 錯誤地累加折扣金額
+                        totalDiscountFromCoupons = totalDiscountFromCoupons + coupon.getDiscountAmount();
                         System.out.println("DEBUG (CartService - Flawed Multiple): 套用優惠券 '" + coupon.getDescription()
                                 + "', 折抵金額: " + coupon.getDiscountAmount());
                     } else {
@@ -79,13 +76,12 @@ public class CartService {
         }
 
         // 3. 計算折扣後總價
-        BigDecimal discountedTotal = originalTotal.subtract(totalDiscountFromCoupons);
-        if (discountedTotal.compareTo(BigDecimal.ZERO) < 0) {
-            discountedTotal = BigDecimal.ZERO;
+        Integer discountedTotal = originalTotal - totalDiscountFromCoupons;
+        if (discountedTotal < 0) {
+            discountedTotal = 0;
         }
-        discountedTotal = discountedTotal.setScale(2, RoundingMode.HALF_UP);
 
-        BigDecimal actualTotalDiscountApplied = originalTotal.subtract(discountedTotal); // 這是實際發生的總折扣
+        Integer actualTotalDiscountApplied = originalTotal - discountedTotal;
 
         System.out.println("DEBUG (CartService - Flawed Multiple): 計算完成。原始總價: " + originalTotal +
                 ", 折扣後總價: " + discountedTotal +
