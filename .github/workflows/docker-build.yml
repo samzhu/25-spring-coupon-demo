@@ -41,4 +41,4 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and publish Docker image
-        run: ./gradlew bootBuildImage --imageName=ghcr.io/${{ github.repository }}:${{ github.sha }} --publishImage
+        run: ./gradlew bootBuildImage --imageName=ghcr.io/${{ github.repository }}:${{ github.run.number }} --publishImage
