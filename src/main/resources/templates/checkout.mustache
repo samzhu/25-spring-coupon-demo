@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>購物車結帳演示</title>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #6a1b9a; /* 深紫色 */
+            --primary-color-dark: #4a148c; /* 更深的紫色 */
+            --light-bg: #f8f9fa; /* 淡雅背景 */
+            --dark-text: #333;
+            --light-text: #fff;
+            --border-color: #e0e0e0;
+            --danger-color: #d9534f;
+            --warning-bg: #fff3cd;
+            --warning-text: #856404;
+            --success-color: #28a745;
+            --border-radius: 8px;
+            --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 20px; background-color: var(--light-bg); color: var(--dark-text); line-height: 1.6; }
+        .container { max-width: 960px; margin: 20px auto; padding: 20px; background-color: #fff; border-radius: var(--border-radius); box-shadow: var(--box-shadow); }
+        header { text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color); }
+        header h1 { color: var(--primary-color); font-size: 2.5em; margin-bottom: 0.5em; }
+        header img { vertical-align: middle; border-radius: 50%; margin-right: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .warning-banner { background-color: var(--warning-bg); color: var(--warning-text); border: 1px solid var(--warning-border); padding: 15px; margin-bottom: 25px; border-radius: var(--border-radius); text-align: center; font-weight: bold; }
+        .card { background-color: #fff; border: 1px solid var(--border-color); border-radius: var(--border-radius); padding: 25px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .card h2 { color: var(--primary-color-dark); font-size: 1.8em; margin-top: 0; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--border-color); }
+        .card h3 { color: var(--primary-color); font-size: 1.3em; margin-top: 20px; margin-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th, td { border: 1px solid var(--border-color); padding: 12px 15px; text-align: left; vertical-align: middle; }
+        th { background-color: #f1e8f7; color: var(--primary-color-dark); font-weight: 600; }
+        td:last-child, th:last-child { text-align: right; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 8px; font-weight: 600; color: #555; }
+        /* Style for checkbox groups */
+        .coupon-checkbox-group div { margin-bottom: 5px; }
+        .coupon-checkbox-group input[type="checkbox"] { margin-right: 8px; vertical-align: middle;}
+        .coupon-checkbox-group label { font-weight: normal; display: inline; }
+
+        button { background-color: var(--primary-color); color: var(--light-text); padding: 10px 18px; border: none; border-radius: calc(var(--border-radius) - 2px); cursor: pointer; font-size: 0.95em; font-weight: 500; }
+        button:hover { background-color: var(--primary-color-dark); }
+        .button-danger { background-color: var(--danger-color); }
+        .button-danger:hover { background-color: #c9302c; }
+        .button-secondary { background-color: #6c757d; }
+        .button-secondary:hover { background-color: #5a6268; }
+        .total-section { margin-top: 30px; padding: 25px; background-color: #f1e8f7; border-radius: var(--border-radius); border: 1px solid var(--primary-color-dark); }
+        .total-section h2 { margin-top:0; color: var(--primary-color-dark); }
+        .total-section p { font-size: 1.2em; margin: 10px 0; display: flex; justify-content: space-between; }
+        .total-section p span:first-child { font-weight: 600; }
+        .total-section .final-price { font-size: 1.8em; font-weight: bold; color: var(--danger-color); }
+        .error-message { color: var(--danger-color); font-weight: bold; margin-top: 10px; padding: 10px; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: var(--border-radius); }
+        .coupon-info-list, #appliedCouponListDisplay { list-style: none; padding: 0; }
+        .coupon-info-list li, #appliedCouponListDisplay li { background-color: #f9f9f9; padding: 10px 15px; border: 1px solid #eee; border-radius: calc(var(--border-radius) - 2px); margin-bottom: 8px; font-size: 0.95em; }
+        .coupon-info-list li .coupon-details { font-size: 0.9em; color: #555; }
+        .actions-footer { margin-top: 30px; text-align: right; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+             <img src="https://placehold.co/60x60/6a1b9a/white?text=Shop" alt="購物車圖示">
+            <h1>購物車結帳 (jQuery AJAX - 複選優惠券)</h1>
+        </header>
+
+        <div class="warning-banner">
+            <strong>注意：</strong>此頁面展示了錯誤的優惠券疊加邏輯 (正確是不可同時使用多張優惠券)。
+        </div>
+
+        <div class="card cart-items-card">
+            <h2>您的購物車</h2>
+            <table id="cartItemsTable">
+                <thead>
+                    <tr>
+                        <th>商品名稱</th>
+                        <th>單價</th>
+                        <th>數量</th>
+                        <th>小計</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{#initialFixedCartItemsForDisplay}}
+                    <tr>
+                        <td>{{product.name}}</td>
+                        <td>NT$ {{product.price}}</td>
+                        <td>{{quantity}}</td>
+                        <td>NT$ {{subtotal}}</td>
+                    </tr>
+                    {{/initialFixedCartItemsForDisplay}}
+                    {{^initialFixedCartItemsForDisplay}}
+                    <tr><td colspan="4">購物車初始項目載入中...</td></tr>
+                    {{/initialFixedCartItemsForDisplay}}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card coupon-management-card">
+            <h2>優惠券管理 (可複選)</h2>
+            <div class="form-group coupon-checkbox-group">
+                <label>選擇優惠券:</label>
+                <div id="couponCheckboxList">
+                    {{#allCoupons}}
+                    <div>
+                        <input type="checkbox" id="coupon-{{code}}" name="couponCheckbox" value="{{code}}" class="coupon-checkbox">
+                        <label for="coupon-{{code}}">{{description}} (折抵 NT$ {{discountAmount}})</label>
+                    </div>
+                    {{/allCoupons}}
+                    {{^allCoupons}}
+                    <p>目前沒有可用的優惠券。</p>
+                    {{/allCoupons}}
+                </div>
+            </div>
+            <div id="couponMessage" class="error-message" style="display: none;"></div>
+
+            <h3>已套用的優惠券:</h3>
+            <div id="appliedCouponInfoContainer">
+                 <p id="noAppliedCouponText">目前沒有套用任何優惠券。</p>
+                 <ul id="appliedCouponListDisplay" style="display: none;">
+                     </ul>
+            </div>
+        </div>
+
+        <div class="total-section">
+            <h2>結帳總覽</h2>
+            <p><span>商品原總價:</span> <span id="originalTotalDisplay">NT$ 0.00</span></p>
+            <div id="appliedCouponSummaryContainer">
+                 </div>
+            <p>
+                <span>折扣後總價:</span>
+                <span id="discountedTotalDisplay" class="final-price">NT$ 0.00</span>
+            </p>
+            <p id="savingsDisplayContainer" style="font-size:0.9em; color: var(--success-color); justify-content: flex-end; display:none;">
+                已為您節省 NT$ <span id="savingsAmountDisplay">0.00</span>
+            </p>
+        </div>
+
+        <div class="actions-footer">
+            <button id="resetCouponsBtn" class="button-secondary">清除所有已選優惠券</button> 
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            const fixedCartItems = [
+                { productId: "P001", quantity: 1 },
+                { productId: "P002", quantity: 2 }
+            ];
+            let currentAppliedCouponCodes = []; // Array to store codes of selected coupons
+
+            function updateCartCalculation() {
+                const shoppingCartInput = {
+                    items: fixedCartItems,
+                    couponCodes: currentAppliedCouponCodes // Send the array of selected codes
+                };
+
+                console.log("向後端發送 ShoppingCartInput (複選):", JSON.stringify(shoppingCartInput));
+                $('#couponMessage').hide().text('');
+                
+                $.ajax({
+                    url: '/cart/calculate',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(shoppingCartInput)
+                })
+                .then(function(result) {
+                    console.log("收到計算結果 (複選):", result);
+                    renderCalculationResult(result);
+                })
+                .catch(function(jqXHR, textStatus, errorThrown) {
+                    // 記錄原始 response body
+                    console.log('Response Body (原始):', jqXHR.responseText);
+
+                    // 解析並顯示 JSON response body
+                    let errorMsg = '計算錯誤';
+                    try {
+                        const responseJson = JSON.parse(jqXHR.responseText);
+                        console.log('Response Body (JSON):', responseJson);
+                        
+                        // 處理 Spring Boot 錯誤回應
+                        if (responseJson.message) {
+                            errorMsg = responseJson.message;
+                            console.log('錯誤訊息:', responseJson.message);
+                            console.log('錯誤時間:', responseJson.timestamp);
+                            console.log('錯誤路徑:', responseJson.path);
+                        } else {
+                            errorMsg = JSON.stringify(responseJson);
+                        }
+                    } catch (e) {
+                        console.error('解析 JSON 回應時發生錯誤:', e);
+                        errorMsg = jqXHR.responseText || '計算錯誤';
+                    }
+                    $('#couponMessage').text(errorMsg).show();
+                });
+            }
+
+            function renderCalculationResult(result) {
+                $('#originalTotalDisplay').text(`NT$ ${parseFloat(result.originalTotal).toFixed(2)}`);
+                $('#discountedTotalDisplay').text(`NT$ ${parseFloat(result.discountedTotal).toFixed(2)}`);
+
+                const $appliedList = $('#appliedCouponListDisplay').empty(); // Clear previous list
+                const $appliedSummaryContainer = $('#appliedCouponSummaryContainer').empty();
+
+                if (result.appliedCoupons && result.appliedCoupons.length > 0) {
+                    $('#noAppliedCouponText').hide();
+                    result.appliedCoupons.forEach(function(coupon) {
+                        $('<li>').text(`${coupon.description} (${coupon.code}) - 折抵 NT$ ${parseFloat(coupon.discountAmount).toFixed(2)}`).appendTo($appliedList);
+                        $('<p>').html(`<span>已套用優惠券 (${coupon.code}):</span> <span style="color: var(--success-color);">- NT$ ${parseFloat(coupon.discountAmount).toFixed(2)}</span>`).appendTo($appliedSummaryContainer);
+                    });
+                    $appliedList.show();
+                } else {
+                    $('#noAppliedCouponText').show();
+                    $appliedList.hide();
+                }
+
+                const totalDiscount = parseFloat(result.totalDiscountAmount);
+                if (totalDiscount > 0) {
+                    $('#savingsAmountDisplay').text(totalDiscount.toFixed(2));
+                    $('#savingsDisplayContainer').css('display', 'flex');
+                } else {
+                    $('#savingsDisplayContainer').hide();
+                }
+            }
+
+            // Event listener for coupon checkboxes
+            $('#couponCheckboxList').on('change', '.coupon-checkbox', function() {
+                currentAppliedCouponCodes = []; // Reset the array
+                $('.coupon-checkbox:checked').each(function() {
+                    currentAppliedCouponCodes.push($(this).val());
+                });
+                console.log("選中的優惠券:", currentAppliedCouponCodes);
+                updateCartCalculation();
+            });
+            
+            $('#resetCouponsBtn').on('click', function() {
+                currentAppliedCouponCodes = [];
+                $('.coupon-checkbox').prop('checked', false); // Uncheck all
+                $('#couponMessage').hide().text('');
+                updateCartCalculation();
+            });
+
+            // Initial calculation on page load
+            updateCartCalculation();
+        });
+    </script>
+</body>
+</html>
