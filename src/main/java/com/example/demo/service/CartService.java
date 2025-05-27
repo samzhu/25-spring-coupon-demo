@@ -1,6 +1,7 @@
 package com.example.demo.service;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Service;
 import com.example.demo.dto.CalculationResultDto;
 import com.example.demo.dto.CartItemInput;
 import com.example.demo.dto.ShoppingCartInput;
+import com.example.demo.exception.ExcessiveDiscountException;
 import com.example.demo.model.Coupon;
 import com.example.demo.model.Product;
 import com.example.demo.repository.CouponRepository;
@@ -35,26 +37,43 @@ public class CartService {
     /**
      * 根據輸入的 {@link ShoppingCartInput} 計算購物車的總價和折扣。
      * <p>
-     * 此方法會將所有提供的有效固定金額優惠券的折扣疊加。
+     * 此方法將選擇提供的有效固定金額優惠券中折扣最大的一個進行套用。
+     * 如果最佳優惠券的折扣金額超過原始總價，將拋出 {@link ExcessiveDiscountException}。
      *
      * @param cartInput 包含購物車項目、數量和優惠券代碼列表的輸入物件。
-     * @return {@link CalculationResultDto} 包含原始總價、折扣後總價、實際折扣金額以及所有套用的優惠券列表。
+     * @return {@link CalculationResultDto} 包含原始總價、折扣後總價、實際折扣金額以及套用的最佳優惠券（如果有的話）。
+     * @throws ExcessiveDiscountException 如果選擇的最佳優惠券折扣金額大於購物車原始總價。
      */
     public CalculationResultDto calculateCartPrice(ShoppingCartInput cartInput) {
         Integer rawTotalPrice = calculateRawTotalPrice(cartInput.items());
 
-        List<Coupon> appliedCoupons = new ArrayList<>();
-        Integer totalDiscountAmountFromCoupons = applyCoupons(cartInput.couponCodes(), appliedCoupons);
+        Coupon bestCoupon = findBestCoupon(cartInput.couponCodes());
+        Integer totalDiscountAmountFromCoupon = 0;
+        List<Coupon> appliedCouponsList = new ArrayList<>();
+
+        if (bestCoupon != null) {
+            if (bestCoupon.getDiscountAmount() > rawTotalPrice) {
+                log.warn("所選優惠券 '{}' 折扣金額 {} 超過原始總價 {}。拋出 ExcessiveDiscountException。",
+                        bestCoupon.getCode(), bestCoupon.getDiscountAmount(), rawTotalPrice);
+                throw new ExcessiveDiscountException("所選優惠券總折價已達上限，無法套用更多優惠券");
+            }
+            totalDiscountAmountFromCoupon = bestCoupon.getDiscountAmount();
+            appliedCouponsList.add(bestCoupon);
+            log.info("套用最佳優惠券: {} (代碼: {}), 折扣金額: {}", bestCoupon.getDescription(), bestCoupon.getCode(), bestCoupon.getDiscountAmount());
+        } else {
+            log.info("沒有有效的優惠券可供套用。");
+        }
 
         // 計算折扣後總價
-        Integer finalPrice = rawTotalPrice - totalDiscountAmountFromCoupons;
+        Integer finalPrice = rawTotalPrice - totalDiscountAmountFromCoupon;
 
-        Integer effectiveTotalDiscount = rawTotalPrice - finalPrice;
+        // 實際折扣等於優惠券折扣，因為我們只套用一個（或零個）
+        Integer effectiveTotalDiscount = totalDiscountAmountFromCoupon;
 
-        log.info("計算完成。原始總價: {}, 折扣後總價: {}, 優惠券聲稱總折扣: {}, 實際總折扣: {}",
-                rawTotalPrice, finalPrice, totalDiscountAmountFromCoupons, effectiveTotalDiscount);
+        log.info("計算完成。原始總價: {}, 折扣後總價: {}, 優惠券折扣金額: {}, 實際總折扣: {}",
+                rawTotalPrice, finalPrice, totalDiscountAmountFromCoupon, effectiveTotalDiscount);
 
-        return new CalculationResultDto(rawTotalPrice, finalPrice, effectiveTotalDiscount, appliedCoupons);
+        return new CalculationResultDto(rawTotalPrice, finalPrice, effectiveTotalDiscount, appliedCouponsList);
     }
 
     /**
@@ -80,29 +99,37 @@ public class CartService {
     }
 
     /**
-     * 處理並套用提供的優惠券代碼。
+     * 從提供的優惠券代碼列表中找出折扣金額最高的有效優惠券。
      *
-     * @param couponCodes    使用者提供的優惠券代碼列表。
-     * @param appliedCoupons 用於收集實際套用的優惠券實例列表 (此列表會被此方法修改)。
-     * @return 從所有套用的優惠券中獲得的總折扣金額。
+     * @param couponCodes 使用者提供的優惠券代碼列表。
+     * @return 折扣金額最高的 {@link Coupon}，如果沒有有效的優惠券則返回 {@code null}。
      */
-    private Integer applyCoupons(List<String> couponCodes, List<Coupon> appliedCoupons) {
-        Integer currentTotalDiscount = 0;
-        if (couponCodes != null && !couponCodes.isEmpty()) {
-            for (String couponCode : couponCodes) {
-                if (couponCode != null && !couponCode.trim().isEmpty()) {
-                    Optional<Coupon> optionalCoupon = couponRepository.findByCode(couponCode);
-                    if (optionalCoupon.isPresent()) {
-                        Coupon coupon = optionalCoupon.get();
-                        appliedCoupons.add(coupon);
-                        currentTotalDiscount += coupon.getDiscountAmount();
-                        log.debug("套用優惠券 '{}', 折抵金額: {}", coupon.getDescription(), coupon.getDiscountAmount());
-                    } else {
-                        log.warn("計算時找不到優惠券代碼: {}。此券將不被套用。", couponCode);
+    private Coupon findBestCoupon(List<String> couponCodes) {
+        if (couponCodes == null || couponCodes.isEmpty()) {
+            return null;
+        }
+
+        Coupon bestCoupon = null;
+        for (String couponCode : couponCodes) {
+            if (couponCode != null && !couponCode.trim().isEmpty()) {
+                Optional<Coupon> optionalCoupon = couponRepository.findByCode(couponCode);
+                if (optionalCoupon.isPresent()) {
+                    Coupon currentCoupon = optionalCoupon.get();
+                    if (bestCoupon == null || currentCoupon.getDiscountAmount() > bestCoupon.getDiscountAmount()) {
+                        bestCoupon = currentCoupon;
                     }
+                    log.debug("找到有效優惠券 '{}' (代碼: {}), 折扣金額: {}", currentCoupon.getDescription(), currentCoupon.getCode(), currentCoupon.getDiscountAmount());
+                } else {
+                    log.warn("找不到優惠券代碼: {}。此券將不被考慮。", couponCode);
                 }
             }
         }
-        return currentTotalDiscount;
+
+        if (bestCoupon != null) {
+            log.info("選擇的最佳優惠券: {} (代碼: {}), 折扣金額: {}", bestCoupon.getDescription(), bestCoupon.getCode(), bestCoupon.getDiscountAmount());
+        } else {
+            log.info("提供的優惠券代碼中沒有找到有效的優惠券。");
+        }
+        return bestCoupon;
     }
 }
