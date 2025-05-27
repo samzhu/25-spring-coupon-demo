@@ -92,7 +92,7 @@
         </div>
 
         <div class="card coupon-management-card">
-            <h2>優惠券管理 (可複選)</h2>
+            <h2>優惠券管理</h2>
             <div class="form-group coupon-checkbox-group">
                 <label>選擇優惠券:</label>
                 <div id="couponCheckboxList">
@@ -150,7 +150,7 @@
                     couponCodes: currentAppliedCouponCodes // Send the array of selected codes
                 };
 
-                console.log("向後端發送 ShoppingCartInput (複選):", JSON.stringify(shoppingCartInput));
+                console.log("向後端發送 ShoppingCartInput:", JSON.stringify(shoppingCartInput));
                 $('#couponMessage').hide().text('');
                 
                 $.ajax({
@@ -160,7 +160,7 @@
                     data: JSON.stringify(shoppingCartInput)
                 })
                 .then(function(result) {
-                    console.log("收到計算結果 (複選):", result);
+                    console.log("收到計算結果:", result);
                     renderCalculationResult(result);
                 })
                 .catch(function(jqXHR, textStatus, errorThrown) {
