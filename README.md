@@ -121,11 +121,11 @@ graph LR
 以下圖表展示了系統的高層模組及其職責和關係。
 ```mermaid
 graph TD
-    UI["<b>使用者介面 (UI)</b><br/>(checkout.mustache + jQuery)<br/>- 顯示購物車內容、可用優惠券<br/>- 處理使用者勾選優惠券操作 (確保擇一)<br/>- 發起 AJAX 請求到後端進行計算<br/>- 動態更新價格顯示、已套用優惠券列表"]
+    UI["<b>使用者介面 (UI)</b><br/>(checkout.mustache + jQuery)<br/>- 顯示購物車內容、可用優惠券<br/>- 處理使用者勾選優惠券操作 (確保擇一)<br/>- 發起 AJAX 請求到後端進行計算<br/>- 動態更新價格顯示、已套用優惠券列表<br/>- 接收並顯示來自後端的錯誤訊息"]
 
-    WebLayer["<b>Web 層 (Web Layer)</b><br/>(CartController.java)<br/>- 接收 HTTP 請求<br/>- 提供初始頁面數據<br/>- 提供 /cart/calculate API 端點<br/>- 調用服務層進行計算<br/>- 返回 CalculationResultDto (JSON)"]
+    WebLayer["<b>Web 層 (Web Layer)</b><br/>(CartController.java)<br/>- 接收 HTTP 請求<br/>- 提供初始頁面數據<br/>- 提供 /cart/calculate API 端點<br/>- 調用服務層進行計算<br/>- 捕獲服務層例外，轉換為標準化錯誤回應<br/>- 返回 CalculationResultDto (JSON) 或錯誤回應 (JSON)"]
 
-    ServiceLayer["<b>服務層 (Service Layer)</b><br/>(CartService.java)<br/>- 接收 ShoppingCartInput DTO<br/>- 包含核心業務邏輯：<br/>  - 計算原始總價<br/>  - 查找並驗證優惠券 (透過 Repository)<br/>  - <b>執行優惠券擇一使用計算邏輯</b><br/>- 返回 CalculationResultDto"]
+    ServiceLayer["<b>服務層 (Service Layer)</b><br/>(CartService.java)<br/>- 接收 ShoppingCartInput DTO<br/>- 包含核心業務邏輯：<br/>  - 計算原始總價<br/>  - 查找並驗證優惠券 (透過 Repository)<br/>  - <b>執行優惠券擇一使用計算邏輯</b><br/>  - 執行業務規則校驗，不符合時拋出業務例外<br/>- 返回 CalculationResultDto"]
 
     DataAccessLayer["<b>數據存取層 (Data Access Layer)</b><br/>(ProductRepository.java, CouponRepository.java)<br/>- 提供數據存取接口<br/>- 實作 (In-Memory 儲存)"]
 
@@ -154,9 +154,9 @@ graph TD
     style Models fill:#whitesmoke,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5
 ```
 ### 3.2 組件職責
-* **使用者介面 (UI)**：負責呈現資訊給使用者，並捕獲使用者輸入（勾選優惠券）。它使用 jQuery 透過 AJAX 與後端通訊，實現頁面的動態更新，避免整頁刷新。
-* **Web 層 (`CartController`)**: 作為應用程式的入口點，處理來自前端的 HTTP 請求。它將請求路由到適當的服務，並將服務的結果轉換為適合前端的格式（HTML 頁面或 JSON 數據）。
-* **服務層 (`CartService`)**: 封裝核心的業務邏輯。在此應用中，主要是根據輸入的商品和優惠券信息，執行價格計算。此服務設計為無狀態的。
+* **使用者介面 (UI)**：負責呈現資訊給使用者，並捕獲使用者輸入（勾選優惠券）。它使用 jQuery 透過 AJAX 與後端通訊，實現頁面的動態更新，避免整頁刷新。當後端返回錯誤時，UI 負責展示由後端提供的錯誤訊息。
+* **Web 層 (`CartController`)**: 作為應用程式的入口點，處理來自前端的 HTTP 請求。它將請求路由到適當的服務，並將服務的結果轉換為適合前端的格式（HTML 頁面或 JSON 數據）。`CartController` 同時負責捕獲來自服務層的業務例外，並將它們轉換成標準化的 HTTP 錯誤回應給前端。
+* **服務層 (`CartService`)**: 封裝核心的業務邏輯。在此應用中，主要是根據輸入的商品和優惠券信息，執行價格計算。此服務設計為無狀態的。`CartService` 會執行所有相關的業務規則校驗，並在校驗失敗時拋出具體的業務例外。
 * **數據存取層 (`ProductRepository`, `CouponRepository`)**: 抽象化數據的儲存和檢索。目前使用記憶體內存儲，但此層的設計允許未來更換為其他儲存機制（如資料庫）。
 * **數據初始化器 (`DataInitializer`)**: 確保應用程式啟動時有可用的初始數據，方便系統運作。
 * **DTOs**: 用於在 Web 層和服務層之間傳遞數據，實現層間解耦。
@@ -194,24 +194,26 @@ graph TD
 3.  **瀏覽器 (jQuery - `updateCartCalculation` 函數)**:
     * 建構 `ShoppingCartInput` DTO，包含固定的商品項目列表 (`fixedCartItems`) 和更新後的 `currentAppliedCouponCodes` (最多一個元素，或為空)。
     * 發起 AJAX `POST /cart/calculate` 請求到應用程式伺服器，請求體為 JSON 格式的 `ShoppingCartInput` DTO。
-    * 包含完整的錯誤處理邏輯，在發生錯誤時顯示適當的錯誤訊息。
+    * 前端 AJAX 調用包含 `error` 回調，用於處理來自後端的錯誤回應 (例如 HTTP 狀態碼 4xx/5xx)，並將後端提供的錯誤訊息顯示給使用者。
 4.  **`CartController`**: `calculateCart` 方法被調用。
     * `@RequestBody` 將 JSON 請求體反序列化為 `ShoppingCartInput` DTO。
-    * 調用 `cartService.calculateTotalsFromDto(shoppingCartInput)`。
+    * 調用 `cartService.calculateTotalsFromDto(shoppingCartInput)`。如果 `CartService` 拋出業務例外 (例如 `InvalidCouponException`, `ProductNotFoundException`)，`CartController` (或其統一的例外處理機制，如 `@ControllerAdvice`) 將捕獲此例外，並將其轉換為一個包含明確錯誤訊息的 HTTP 錯誤回應 (例如 JSON 格式，狀態碼 400 Bad Request 或 500 Internal Server Error)。
 5.  **`CartService`**: `calculateTotalsFromDto` 方法執行：
-    * 根據 `shoppingCartInput.items` 計算原始總價，包含產品存在性檢查。
+    * 根據 `shoppingCartInput.items` 計算原始總價。若商品不存在，則拋出例如 `ProductNotFoundException` 的業務例外。
     * 檢查 `shoppingCartInput.couponCodes`：
-        * 如果列表為空或代碼無效，則不應用任何折扣。
-        * 如果包含一個有效的優惠券代碼，則從 `CouponRepository` 獲取 `Coupon` 物件。
+        * 如果列表為空，則不應用任何折扣。
+        * 如果包含一個優惠券代碼，則從 `CouponRepository` 獲取 `Coupon` 物件。若優惠券不存在或無效 (例如已過期，雖然本範例未實現此邏輯)，則拋出例如 `InvalidCouponException` 的業務例外。
         * 記錄詳細的計算過程日誌。
         * **計算邏輯**：將此 **單張** 優惠券的 `discountAmount` 視為總折扣。
         * 將有效的 `Coupon` 物件加入到結果列表。
-    * 計算折扣後總價，確保不會出現負數。
-    * 返回一個包含計算結果的 `CalculationResultDto`。
-6.  **`CartController`**: 將 `CalculationResultDto` 序列化為 JSON 並作為 HTTP 響應返回給前端。
-7.  **瀏覽器 (jQuery - AJAX `success` 回調)**:
-    * 接收到包含 `CalculationResultDto` 的 JSON 響應。
-    * 調用 `renderCalculationResult(result)` 函數。
+    * 計算折扣後總價，確保不會出現負數。若計算結果不合規，可拋出相應業務例外。
+    * 若一切正常，返回一個包含計算結果的 `CalculationResultDto`。
+6.  **`CartController`**: 
+    * 如果 `CartService` 成功返回 `CalculationResultDto`，則將其序列化為 JSON 並作為 HTTP 200 OK 響應返回給前端。
+    * 如果 `CartService` 拋出例外並被捕獲，則返回如步驟 4 所述的錯誤回應。
+7.  **瀏覽器 (jQuery - AJAX `success` 或 `error` 回調)**:
+    * **`success` 回調 (HTTP 200 OK)**: 接收到包含 `CalculationResultDto` 的 JSON 響應，調用 `renderCalculationResult(result)` 函數。
+    * **`error` 回調 (例如 HTTP 400/500)**: 接收到錯誤回應 JSON，從中提取錯誤訊息，並調用 `displayErrorMessage(message)` 類似的函數在頁面上向使用者展示錯誤訊息。
 8.  **瀏覽器 (jQuery - `renderCalculationResult` 函數)**:
     * 使用返回的數據更新頁面上的相應元素（原始總價、折扣後總價、已套用優惠券列表、總節省金額等）。
 
@@ -274,6 +276,17 @@ graph TD
         * 使服務層不直接依賴於 Web 層的請求細節或領域模型的內部表示（儘管在此例中 DTO 與模型結構相似）。
         * 方便 API 的測試和演進。
     * **替代方案**: 服務層直接接收 HttpServletRequest 或多個原始參數。DTO 更結構化。
+* **AD8: 後端為主的業務邏輯校驗與例外處理**
+    * **決策**: 核心業務邏輯校驗（例如，商品是否存在、優惠券是否有效、計算是否合規等）主要在後端服務層 (`CartService`) 進行。當校驗失敗或發生錯誤時，後端服務層應拋出明確的業務例外 (Exception)。Web 層 (`CartController`) 負責捕獲這些來自服務層的例外，並將其轉換為合適的、標準化的錯誤回應 (例如，包含清晰錯誤訊息的 JSON) 返回給前端。前端 JavaScript 應設計為能接收並直接向使用者展示這些由後端提供的錯誤訊息，而不執行重複的核心業務校驗邏輯。前端的校驗可專注於提升使用者體驗，如即時的格式檢查。
+    * **理由**:
+        * **遵循 arc42 建議與分層職責**: 將核心業務邏輯和校驗集中在後端，符合分層架構的最佳實踐，使得各層職責更清晰。
+        * **單一事實來源 (Single Source of Truth)**: 後端作為業務規則的權威執行者，確保了業務邏輯的一致性和準確性。
+        * **安全性**: 僅依賴前端校驗容易被惡意用戶繞過，將核心校驗置於後端能有效提升系統的安全性。
+        * **可維護性與可測試性**: 業務邏輯集中在後端服務層，使得相關邏輯更易於維護、更新和進行單元測試及整合測試。
+        * **API 清晰性與一致性**: API 的錯誤回應更加標準化和明確，有助於前端和其他潛在的 API 消費者理解和處理錯誤。
+    * **替代方案**:
+        * **前端主導校驗**: 大部分校驗邏輯在前端 JavaScript 中實現。此方案會導致業務邏輯分散，增加前後端邏輯不一致的風險，且安全性較低。
+        * **前後端重複核心校驗**: 雖然可以在前端提供更即時的深度業務校驗反饋，但顯著增加了開發和維護的複雜性，且需要投入額外精力確保兩端核心邏輯的同步。
 
 ---
 
@@ -301,4 +314,4 @@ graph TD
 | Service Layer (服務層)           | 封裝應用程式核心業務邏輯的層次。例如 `CartService`。                                                                         |
 | Stateless (無狀態)               | 指服務或組件不保存先前與客戶端互動的任何信息（狀態）。每個請求都被視為獨立的事務。                                                       |
 | UI (User Interface - 使用者介面)   | 使用者與應用程式互動的視覺部分。在此專案中為 `checkout.mustache` 渲染的 HTML 頁面。                                                     |
-| 錯誤處理 (Error Handling)        | 系統在各層級（前端 JavaScript、後端 Controller、Service）都實現了完整的錯誤處理機制，包括：前端 AJAX 請求的錯誤處理和用戶反饋、後端服務層的產品和優惠券存在性檢查、詳細的計算過程日誌記錄。 |
+| 錯誤處理 (Error Handling)        | 系統在各層級的錯誤處理策略：後端服務層 (`CartService`) 負責執行核心業務邏輯校驗，並在發生錯誤時（如產品不存在、優惠券無效）拋出業務例外。Web 層 (`CartController` 或統一例外處理機制) 捕獲這些例外，轉換為標準化的 HTTP 錯誤回應 (包含清晰的錯誤訊息) 給前端。前端 JavaScript 負責接收這些錯誤回應，並將後端提供的訊息直接展示給使用者。前端的校驗主要集中在提升使用者體驗，例如輸入格式的即時檢查。 |
