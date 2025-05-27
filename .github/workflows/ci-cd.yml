@@ -1,0 +1,121 @@
+name: Build, Test, and Release Pipeline
+
+# 此 workflow 自動化應用程式的建置、測試和發布流程，
+# 並遵循 GitHub Flow 的原則。
+#
+# 主要觸發條件與操作：
+# 1. 推送到 `main` 分支：執行測試。若成功，則建置並發布 "rc" (Release Candidate) Docker 映像。
+# 2. 推送到 `feature/**` 分支：執行測試。若成功，則為該功能分支建置並發布 "beta" Docker 映像。
+# 3. 推送 `v*` 格式的 tag (例如 v1.0.0)：執行測試。若成功，則建置並發布使用該 Git tag 標記的發行版 Docker 映像。
+# 4. 對 `main` 分支的拉取請求 (Pull Request)：執行測試，以在合併前驗證變更。
+# 5. 手動觸發 (Manual Dispatch)：允許針對特定版本或情境手動觸發 workflow。
+#
+# 此 pipeline 包含兩個主要工作：
+# - `test`：執行單元測試。
+# - `build-and-publish`：建置 Docker 映像並將其發布到 GHCR。此工作取決於 `test` 工作是否成功，
+#   且觸發事件不能是 pull request。映像版本將根據觸發事件決定。
+
+on:
+  push:
+    branches:
+      - 'main' # 推送到 main 分支時觸發
+      - 'feature/**' # 推送到 feature/* (例如 feature/login) 分支時觸發
+    tags:
+      - 'v*' # 推送到 v 開頭的 tag (例如 v1.0, v2.0.1) 時觸發
+  pull_request:
+    branches:
+      - 'main' # 當有 PR 指向 main 分支時觸發
+  workflow_dispatch: # 允許手動觸發 workflow
+    inputs: # 手動觸發時可傳入的參數
+      version:
+        description: 'Image version (e.g., 1.0.0). If not provided for manual run, defaults to manual-dispatch-<run_number>.'
+        required: false
+
+jobs: # 定義 workflow 中的所有工作
+  test:
+    name: Run Unit Tests
+    # 此測試工作會在 `on:` 中定義的所有事件觸發時執行 (例如：推送到指定分支/tag, 指定分支的 PR, 或手動觸發)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # 允許讀取程式碼儲存庫內容
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1 # 僅獲取最新的 commit (淺複製)，測試通常不需要完整歷史紀錄
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'liberica'
+          java-version: '21'
+
+      - name: Run tests
+        run: ./gradlew test
+
+  build-and-publish:
+    name: Build and Publish Docker Image
+    needs: test # 此工作依賴 'test' 工作，會在 'test' 成功後才執行
+    # 執行條件：'test' 工作成功，且事件不是 pull_request。
+    # 意即：僅在推送到 main, feature/**, v* tags 或手動觸發 (且測試通過) 時執行。
+    if: needs.test.result == 'success' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read    # 允許讀取程式碼儲存庫內容
+      packages: write   # 允許推送 Docker 映像到 GitHub Container Registry (GHCR)
+    steps:
+      - name: Checkout repository (with tags) # 下載儲存庫程式碼 (包含所有 tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 獲取完整歷史紀錄，以便存取 tag 資訊 (用於 Docker 映像版本號)
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'liberica'
+          java-version: '21'
+      # 注意：發布前的測試已由 'test' job (透過 'needs: test') 涵蓋，此處不再重複執行
+
+      - name: Login to GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine Image Version
+        id: image_version # 設定此步驟的 ID (image_version)，方便後續步驟引用其輸出 (outputs.IMAGE_VERSION)
+        run: |
+          VERSION=""
+          # 根據觸發事件的類型來決定版本號
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            if [[ "${{ github.ref_type }}" == "branch" && "${{ github.ref_name }}" == "main" ]]; then # 推送到 main 分支
+              VERSION="rc-${{ github.run_number }}" # Release Candidate 版本
+            elif [[ "${{ github.ref_type }}" == "tag" && "${{ github.ref_name }}" == v* ]]; then # 推送 v* 格式的 Tag (例如 v1.0.0)
+              VERSION="${{ github.ref_name }}" # 直接使用 tag 名稱作為版本
+            elif [[ "${{ github.ref_type }}" == "branch" && "${{ github.ref_name }}" == feature/* ]]; then # 推送到 feature/* 分支
+              VERSION="beta-${{ github.run_number }}" # Beta 版本
+            else
+              # 其他未明確定義的推送事件 (理論上較少發生)
+              echo "::warning::Push to unexpected ref: ${{ github.ref_name }} (type: ${{ github.ref_type }}). Using default 'snapshot' tag."
+              VERSION="snapshot-${{ github.run_number }}"
+            fi
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then # 手動觸發的 workflow
+            # 使用手動輸入的 version 參數；若無提供，則使用預設格式 'manual-dispatch-<run_number>'
+            VERSION="${{ github.event.inputs.version || format('manual-dispatch-{0}', github.run_number) }}"
+          else
+            # 其他未預期的事件類型 (理論上不會發生)
+            echo "::warning::Unhandled event: ${{ github.event_name }}. Using default 'unknown' tag."
+            VERSION="unknown-${{ github.run_number }}"
+          fi
+
+          # 確認版本號已設定，若 VERSION 為空則報錯並中止 workflow
+          if [ -z "$VERSION" ]; then
+            echo "::error::無法決定映像版本。事件: ${{ github.event_name }}, Ref Name: ${{ github.ref_name }}, Ref Type: ${{ github.ref_type }}"
+            exit 1
+          fi
+          echo "IMAGE_VERSION=$VERSION" >> $GITHUB_OUTPUT # 將決定的版本號設為此步驟的輸出變數 (IMAGE_VERSION)
+
+      - name: Build and publish Docker image # 建置 Docker 映像並發布到 GHCR
+        # 使用上一步 (id: image_version) 決定的 IMAGE_VERSION 作為 Docker 映像的標籤
+        run: ./gradlew bootBuildImage --imageName=ghcr.io/${{ github.repository }}:${{ steps.image_version.outputs.IMAGE_VERSION }} --publishImage
