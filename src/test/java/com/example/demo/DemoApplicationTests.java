@@ -96,7 +96,7 @@ class DemoApplicationTests {
 			Arrays.asList(coupon1)     // 使用的優惠券
 		);
 
-		when(cartService.calculateTotalsFromDto(input)).thenReturn(expectedResult);
+		when(cartService.calculateCartPrice(input)).thenReturn(expectedResult);
 
 		// 執行測試
 		mockMvc.perform(post("/cart/calculate")
@@ -108,7 +108,7 @@ class DemoApplicationTests {
 			.andExpect(jsonPath("$.totalDiscountAmount").value(50))
 			.andExpect(jsonPath("$.appliedCoupons[0].code").value("C001"));
 
-		verify(cartService).calculateTotalsFromDto(input);
+		verify(cartService).calculateCartPrice(input);
 	}
 
 	@Test

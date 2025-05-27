@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.example.demo.dto.CalculationResultDto;
@@ -15,12 +17,12 @@ import com.example.demo.repository.CouponRepository;
 import com.example.demo.repository.ProductRepository;
 
 /**
- * 無狀態的購物車服務類別。
- * 根據輸入的 DTO 計算購物車總價，並返回一個結果 DTO。
- * 此版本將錯誤地疊加所有傳入的有效優惠券。
+ * 購物車服務負責根據輸入的購物車資料計算總價和折扣。
  */
 @Service
 public class CartService {
+
+    private static final Logger log = LoggerFactory.getLogger(CartService.class);
 
     private final ProductRepository productRepository;
     private final CouponRepository couponRepository;
@@ -28,67 +30,79 @@ public class CartService {
     public CartService(ProductRepository productRepository, CouponRepository couponRepository) {
         this.productRepository = productRepository;
         this.couponRepository = couponRepository;
-        System.out.println("Stateless CartService (Pure DTO Calculation, Multiple Coupons Flawed) 已初始化。");
     }
 
     /**
-     * 根據輸入的 ShoppingCartInput DTO 計算總價和折扣。
-     * 此方法會錯誤地疊加所有有效的固定金額優惠券。
+     * 根據輸入的 {@link ShoppingCartInput} 計算購物車的總價和折扣。
+     * <p>
+     * 此方法會將所有提供的有效固定金額優惠券的折扣疊加。
      *
-     * @param cartInputDto 包含購物車項目ID、數量和優惠券代碼列表的 DTO。
-     * @return CalculationResultDto 包含原始總價、折扣後總價、折扣金額和所有套用的優惠券列表。
+     * @param cartInput 包含購物車項目、數量和優惠券代碼列表的輸入物件。
+     * @return {@link CalculationResultDto} 包含原始總價、折扣後總價、實際折扣金額以及所有套用的優惠券列表。
      */
-    public CalculationResultDto calculateTotalsFromDto(ShoppingCartInput cartInputDto) {
-        Integer originalTotal = 0;
-        List<Coupon> appliedCouponInstances = new ArrayList<>();
-        Integer totalDiscountFromCoupons = 0;
+    public CalculationResultDto calculateCartPrice(ShoppingCartInput cartInput) {
+        Integer rawTotalPrice = calculateRawTotalPrice(cartInput.items());
 
-        // 1. 計算原始總價
-        if (cartInputDto.items() != null) {
-            for (CartItemInput itemInput : cartInputDto.items()) {
-                Optional<Product> productOpt = productRepository.findById(itemInput.productId());
-                if (productOpt.isPresent()) {
-                    Product product = productOpt.get();
-                    originalTotal = originalTotal + (product.getPrice() * itemInput.quantity());
+        List<Coupon> appliedCoupons = new ArrayList<>();
+        Integer totalDiscountAmountFromCoupons = applyCoupons(cartInput.couponCodes(), appliedCoupons);
+
+        // 計算折扣後總價
+        Integer finalPrice = rawTotalPrice - totalDiscountAmountFromCoupons;
+
+        Integer effectiveTotalDiscount = rawTotalPrice - finalPrice;
+
+        log.info("計算完成。原始總價: {}, 折扣後總價: {}, 優惠券聲稱總折扣: {}, 實際總折扣: {}",
+                rawTotalPrice, finalPrice, totalDiscountAmountFromCoupons, effectiveTotalDiscount);
+
+        return new CalculationResultDto(rawTotalPrice, finalPrice, effectiveTotalDiscount, appliedCoupons);
+    }
+
+    /**
+     * 計算購物車中所有商品的原始總價。
+     *
+     * @param items 購物車中的商品項目列表。
+     * @return 原始總價。
+     */
+    private Integer calculateRawTotalPrice(List<CartItemInput> items) {
+        Integer currentRawTotalPrice = 0;
+        if (items != null) {
+            for (CartItemInput itemInput : items) {
+                Optional<Product> optionalProduct = productRepository.findById(itemInput.productId());
+                if (optionalProduct.isPresent()) {
+                    Product product = optionalProduct.get();
+                    currentRawTotalPrice += product.getPrice() * itemInput.quantity();
                 } else {
-                    System.err.println("警告：計算時找不到產品 ID: " + itemInput.productId());
+                    log.warn("計算時找不到產品 ID: {}。此商品將不列入計算。", itemInput.productId());
                 }
             }
         }
-        
+        return currentRawTotalPrice;
+    }
 
-        // 2. 處理多張優惠券 (錯誤疊加邏輯)
-        if (cartInputDto.couponCodes() != null && !cartInputDto.couponCodes().isEmpty()) {
-            for (String couponCode : cartInputDto.couponCodes()) {
+    /**
+     * 處理並套用提供的優惠券代碼。
+     *
+     * @param couponCodes    使用者提供的優惠券代碼列表。
+     * @param appliedCoupons 用於收集實際套用的優惠券實例列表 (此列表會被此方法修改)。
+     * @return 從所有套用的優惠券中獲得的總折扣金額。
+     */
+    private Integer applyCoupons(List<String> couponCodes, List<Coupon> appliedCoupons) {
+        Integer currentTotalDiscount = 0;
+        if (couponCodes != null && !couponCodes.isEmpty()) {
+            for (String couponCode : couponCodes) {
                 if (couponCode != null && !couponCode.trim().isEmpty()) {
-                    Optional<Coupon> couponOpt = couponRepository.findByCode(couponCode);
-                    if (couponOpt.isPresent()) {
-                        Coupon coupon = couponOpt.get();
-                        appliedCouponInstances.add(coupon);
-                        totalDiscountFromCoupons = totalDiscountFromCoupons + coupon.getDiscountAmount();
-                        System.out.println("DEBUG (CartService - Flawed Multiple): 套用優惠券 '" + coupon.getDescription()
-                                + "', 折抵金額: " + coupon.getDiscountAmount());
+                    Optional<Coupon> optionalCoupon = couponRepository.findByCode(couponCode);
+                    if (optionalCoupon.isPresent()) {
+                        Coupon coupon = optionalCoupon.get();
+                        appliedCoupons.add(coupon);
+                        currentTotalDiscount += coupon.getDiscountAmount();
+                        log.debug("套用優惠券 '{}', 折抵金額: {}", coupon.getDescription(), coupon.getDiscountAmount());
                     } else {
-                        System.err.println("警告：計算時找不到優惠券代碼: " + couponCode + "。此券將不被套用。");
+                        log.warn("計算時找不到優惠券代碼: {}。此券將不被套用。", couponCode);
                     }
                 }
             }
         }
-
-        // 3. 計算折扣後總價
-        Integer discountedTotal = originalTotal - totalDiscountFromCoupons;
-        if (discountedTotal < 0) {
-            discountedTotal = 0;
-        }
-
-        Integer actualTotalDiscountApplied = originalTotal - discountedTotal;
-
-        System.out.println("DEBUG (CartService - Flawed Multiple): 計算完成。原始總價: " + originalTotal +
-                ", 折扣後總價: " + discountedTotal +
-                ", 優惠券聲稱總折扣: " + totalDiscountFromCoupons +
-                ", 實際總折扣: " + actualTotalDiscountApplied);
-
-        return new CalculationResultDto(originalTotal, discountedTotal, actualTotalDiscountApplied,
-                appliedCouponInstances);
+        return currentTotalDiscount;
     }
 }
