@@ -97,7 +97,7 @@ graph LR
 
 #### 2.3.2 功能範疇 (Functional Scope)
 **範圍內 (In Scope):**
-詳細功能請參見 [1.2.2 主要功能需求](##122-主要功能需求-key-functional-requirements)。核心功能包括商品展示、優惠券選擇、價格計算（錯誤邏輯）、結果呈現。
+詳細功能請參見 [1.2.2 主要功能需求](#122-主要功能需求-key-functional-requirements)。核心功能包括商品展示、優惠券選擇、價格計算（錯誤邏輯）、結果呈現。
 
 **範圍外 (Out of Scope):**
 * 使用者認證與授權。
