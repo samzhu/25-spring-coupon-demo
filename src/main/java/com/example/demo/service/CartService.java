@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.example.demo.dto.CalculationResultDto;
+import com.example.demo.exception.TotalDiscountExceededException;
 import com.example.demo.dto.CartItemInput;
 import com.example.demo.dto.ShoppingCartInput;
 import com.example.demo.model.Coupon;
@@ -44,7 +45,7 @@ public class CartService {
         Integer rawTotalPrice = calculateRawTotalPrice(cartInput.items());
 
         List<Coupon> appliedCoupons = new ArrayList<>();
-        Integer totalDiscountAmountFromCoupons = applyCoupons(cartInput.couponCodes(), appliedCoupons);
+        Integer totalDiscountAmountFromCoupons = applyCoupons(cartInput.couponCodes(), appliedCoupons, rawTotalPrice);
 
         // 計算折扣後總價
         Integer finalPrice = rawTotalPrice - totalDiscountAmountFromCoupons;
@@ -84,9 +85,11 @@ public class CartService {
      *
      * @param couponCodes    使用者提供的優惠券代碼列表。
      * @param appliedCoupons 用於收集實際套用的優惠券實例列表 (此列表會被此方法修改)。
+     * @param rawTotalPrice  購物車的原始總價。
      * @return 從所有套用的優惠券中獲得的總折扣金額。
+     * @throws TotalDiscountExceededException 如果套用優惠券後的總折扣金額超過原始總價。
      */
-    private Integer applyCoupons(List<String> couponCodes, List<Coupon> appliedCoupons) {
+    private Integer applyCoupons(List<String> couponCodes, List<Coupon> appliedCoupons, Integer rawTotalPrice) {
         Integer currentTotalDiscount = 0;
         if (couponCodes != null && !couponCodes.isEmpty()) {
             for (String couponCode : couponCodes) {
@@ -94,6 +97,9 @@ public class CartService {
                     Optional<Coupon> optionalCoupon = couponRepository.findByCode(couponCode);
                     if (optionalCoupon.isPresent()) {
                         Coupon coupon = optionalCoupon.get();
+                        if (currentTotalDiscount + coupon.getDiscountAmount() > rawTotalPrice) {
+                            throw new TotalDiscountExceededException("所選優惠券總折價已達上限，無法套用更多優惠券");
+                        }
                         appliedCoupons.add(coupon);
                         currentTotalDiscount += coupon.getDiscountAmount();
                         log.debug("套用優惠券 '{}', 折抵金額: {}", coupon.getDescription(), coupon.getDiscountAmount());
